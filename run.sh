@@ -1,0 +1,1 @@
+clear && c++ main.cpp -fsanitize=address -g3 && ./a.out
