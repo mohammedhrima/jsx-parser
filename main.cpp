@@ -3,12 +3,14 @@
 #include <string>
 #include <cstring>
 #include <fstream>
+#include <memory>
+#include <iomanip>
+
 
 class Error : public std::exception
 {
 private:
    std::string message;
-
 public:
    explicit Error(const std::string &message) : message(message) {}
    const char *what() const noexcept override { return message.c_str(); }
@@ -16,6 +18,7 @@ public:
 
 enum Type
 {
+   NONE = 0,
    OPEN_TAG = '<', CLOSE_TAG = '>', SLASH = '/',
    LPAR = '(', RPAR = ')', LCBR = '{', RCBR = '}',
    LBR = '[', RBR = ']', ID = 'e', KEY = 's',
@@ -31,16 +34,29 @@ struct
 struct Token
 {
    std::string value;
-   Type type;
+   Type type = NONE;
 
    Token() = default;
    Token(const Token &) = default;
    Token(Token &&) = default;
 
-   Token(Type type, std::string value = "") : type(type), value(std::move(value)) {}
-   Token(char type) : type(static_cast<Type>(type)) {}
-   Token(char type, std::string value) : type(static_cast<Type>(type)), value(std::move(value)) {}
-
+   Token(Type type, std::string value = "")
+   {
+      // std::cout <<  __LINE__ << ": new token has " << type << std::endl;
+      this->type = type;
+      this->value = std::move(value); 
+   }
+   Token(char type, std::string value)
+   {
+      // std::cout <<  __LINE__ << ": new token has " << type << std::endl;
+      this->type = static_cast<Type>(type);
+      this->value = std::move(value);
+   }
+   Token(char type)
+   {
+      // std::cout <<  __LINE__ << ": new token has " << type << std::endl;
+      this->type = (Type)type;
+   }
    Token &operator=(const Token &) = default;
    Token &operator=(Token &&) = default;
 
@@ -78,9 +94,9 @@ std::ostream &operator<<(std::ostream &out, const Token &token)
    return out;
 }
 
-std::vector<Token> tokenize(const std::string &str)
+std::vector<Token> Tokens;
+void tokenize(const std::string &str)
 {
-   std::vector<Token> res;
    std::string special("<>/()[]{}");
 
    for (size_t i = 0; i < str.length();)
@@ -90,10 +106,9 @@ std::vector<Token> tokenize(const std::string &str)
          i++;
          continue;
       }
-
       if (special.find(str[i]) != std::string::npos)
       {
-         res.emplace_back(str[i]);
+         Tokens.emplace_back(str[i]);
          i++;
       }
       else
@@ -104,17 +119,15 @@ std::vector<Token> tokenize(const std::string &str)
             special.find(str[i]) == std::string::npos)
             i++;
          std::string word = str.substr(s, i - s);
-         res.emplace_back(ID, word);
+         Tokens.emplace_back(ID, word);
       }
    }
-   return res;
 }
 
 std::string readFileToString(const std::string &filePath)
 {
    std::ifstream file(filePath, std::ios::binary);
-   if (!file)
-      throw std::runtime_error("Failed to open file: " + filePath);
+   if (!file) throw std::runtime_error("Failed to open file: " + filePath);
 
    file.seekg(0, std::ios::end);
    std::streamsize size = file.tellg();
@@ -127,18 +140,63 @@ std::string readFileToString(const std::string &filePath)
    return content;
 }
 
+struct Node 
+{
+   std::unique_ptr<Token> token;
+   std::unique_ptr<Node> left;
+   std::unique_ptr<Node> right;
 
+   Node(){};
+   ~Node(){}
+   explicit Node(Token *token) : token(token) {};
+
+   // Disable copying
+   Node(const Node &) = delete;
+   Node &operator=(const Node &) = delete;
+
+   // Enable moving
+   Node(Node &&) = default;
+   Node &operator=(Node &&) = default;
+
+   void add_left(std::unique_ptr<Node> node)
+   {
+      left = std::move(node);
+   }
+
+   void add_right(std::unique_ptr<Node> node)
+   {
+      right = std::move(node);
+   }
+};
+
+void print_node(std::ostream &out, const Node *node, int indent = 0)
+{
+   if (!node) return;
+   out << std::setw(indent) << ' ';
+   if (node->token) out << *node->token;
+   else out << "null";
+   out << '\n';
+   print_node(out, node->left.get(), indent + 4);
+   print_node(out, node->right.get(), indent + 4);
+}
+
+std::ostream &operator<<(std::ostream &out, const Node &node)
+{
+   print_node(out, &node);
+   return out;
+}
+
+void parse()
+{
+   
+}
 
 int main()
 {
    try
    {
-      std::string content = readFileToString("home.jsx");
-      std::vector<Token> res = tokenize(content);
-      for (auto &e : res)
-         std::cout << e << std::endl;
-      
-
+      tokenize(readFileToString("home.jsx"));
+      for (auto &e : Tokens) std::cout << e << std::endl;
    }
    catch (const std::exception &e)
    {
